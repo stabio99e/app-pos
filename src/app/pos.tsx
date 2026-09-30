@@ -9,6 +9,7 @@ import {
   ScrollView,
   useWindowDimensions,
   Platform,
+  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -44,6 +45,8 @@ import {
   PAYMENT_METHODS,
   SWEET_ADDON_GROUPS,
   SAVORY_ADDON_GROUPS,
+  FLAT_SWEET_ADDONS,
+  FLAT_SAVORY_ADDONS,
   PROMOS,
   formatRupiah,
 } from '@/constants/pos-data';
@@ -64,6 +67,36 @@ export default function POSScreen() {
 
   // Store status: Open or Close
   const [isOpenOrder, setIsOpenOrder] = useState(true);
+
+  // Dynamic Real-time Date and Clock
+  const [currentDateStr, setCurrentDateStr] = useState(() => {
+    const now = new Date();
+    const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+    const dayName = days[now.getDay()];
+    const date = now.getDate();
+    const month = months[now.getMonth()];
+    const year = now.getFullYear();
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    return `${dayName}, ${date} ${month} ${year} • ${hours}:${minutes} WIB`;
+  });
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const now = new Date();
+      const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+      const dayName = days[now.getDay()];
+      const date = now.getDate();
+      const month = months[now.getMonth()];
+      const year = now.getFullYear();
+      const hours = String(now.getHours()).padStart(2, '0');
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      setCurrentDateStr(`${dayName}, ${date} ${month} ${year} • ${hours}:${minutes} WIB`);
+    }, 15000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Drawer & Modals state
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -88,6 +121,38 @@ export default function POSScreen() {
   // Active Kitchen Orders (Track Order) & Billing Queue State
   const [kitchenOrders, setKitchenOrders] = useState<KitchenOrder[]>(INITIAL_KITCHEN_ORDERS);
   const [billingQueue, setBillingQueue] = useState<BillingQueueItem[]>(INITIAL_BILLING_QUEUE);
+
+  // Track Order Detail Modal State & Handlers
+  const [selectedTrackOrder, setSelectedTrackOrder] = useState<KitchenOrder | null>(null);
+  const [trackOrderDetailModalOpen, setTrackOrderDetailModalOpen] = useState(false);
+
+  const handleOpenTrackOrderDetail = (order: KitchenOrder) => {
+    setSelectedTrackOrder(order);
+    setTrackOrderDetailModalOpen(true);
+  };
+
+  const handleAdvanceOrderStatus = (orderId: string) => {
+    setKitchenOrders((prev) =>
+      prev.map((order) => {
+        if (order.id !== orderId) return order;
+        if (order.status === 'On Kitchen Hand') {
+          return { ...order, status: 'To be Served', statusColor: 'blue' as const };
+        } else if (order.status === 'To be Served') {
+          return { ...order, status: 'All Done', statusColor: 'mint' as const };
+        }
+        return order;
+      })
+    );
+    setSelectedTrackOrder((prev) => {
+      if (!prev || prev.id !== orderId) return prev;
+      if (prev.status === 'On Kitchen Hand') {
+        return { ...prev, status: 'To be Served', statusColor: 'blue' as const };
+      } else if (prev.status === 'To be Served') {
+        return { ...prev, status: 'All Done', statusColor: 'mint' as const };
+      }
+      return prev;
+    });
+  };
 
   // Dynamic Occupied Tables computation
   const occupiedTables = useMemo(() => {
@@ -151,8 +216,9 @@ export default function POSScreen() {
   // Cart State (Empty initially as requested!)
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
 
-  // Mobile cart sheet modal
+  // Mobile cart & kitchen sheet modals
   const [mobileCartOpen, setMobileCartOpen] = useState(false);
+  const [mobileKitchenSheetOpen, setMobileKitchenSheetOpen] = useState(false);
 
   // Filtered Products
   const filteredProducts = useMemo(() => {
@@ -210,7 +276,15 @@ export default function POSScreen() {
     return selectedProduct.price + addonsTotal;
   }, [selectedProduct, selectedAddons]);
 
-  // Detail Modal Addon Groups
+  // Check if detail modal product uses Grouped Addons or Flat Addons
+  const isDetailProductGrouped = useMemo(() => {
+    if (!selectedProduct) return false;
+    if (selectedProduct.addonType === 'flat') return false;
+    if (selectedProduct.addonType === 'grouped') return true;
+    return !!(selectedProduct.addonGroups && selectedProduct.addonGroups.length > 0);
+  }, [selectedProduct]);
+
+  // Detail Modal Addon Groups (for grouped products)
   const currentProductAddonGroups: AddonGroup[] = useMemo(() => {
     if (!selectedProduct) return [];
     if (selectedProduct.addonGroups && selectedProduct.addonGroups.length > 0) {
@@ -219,6 +293,17 @@ export default function POSScreen() {
     return selectedProduct.category === 'Sandwich' || selectedProduct.category === 'Bread'
       ? SAVORY_ADDON_GROUPS
       : SWEET_ADDON_GROUPS;
+  }, [selectedProduct]);
+
+  // Detail Modal Flat Addons (for flat/biasa products)
+  const currentProductFlatAddons: Addon[] = useMemo(() => {
+    if (!selectedProduct) return [];
+    if (selectedProduct.availableAddons && selectedProduct.availableAddons.length > 0) {
+      return selectedProduct.availableAddons;
+    }
+    return selectedProduct.category === 'Sandwich' || selectedProduct.category === 'Bread'
+      ? FLAT_SAVORY_ADDONS
+      : FLAT_SWEET_ADDONS;
   }, [selectedProduct]);
 
   // Actions
@@ -391,6 +476,7 @@ export default function POSScreen() {
     // 3. Set order success and clear cart
     setLastPlacedOrder(placedOrderData);
     setOrderSuccessModalOpen(true);
+    if (isMobile) setMobileCartOpen(false);
   };
 
   const handleFinishOrder = () => {
@@ -470,10 +556,10 @@ export default function POSScreen() {
         {cartItems.length === 0 ? (
           <View style={styles.emptyCartContainer}>
             <View style={styles.emptyCartIconCircle}>
-              <Ionicons name="cart-outline" size={28} color="#94A3B8" />
+              <Ionicons name="bag-handle-outline" size={26} color="#2563EB" />
             </View>
-            <Text style={styles.emptyCartText}>No Item Selected</Text>
-            <Text style={styles.emptyCartSub}>Klik produk di samping untuk menambah pesanan</Text>
+            <Text style={styles.emptyCartText}>Belum Ada Menu Dipilih</Text>
+            <Text style={styles.emptyCartSub}>Pilih menu bakery di sebelah kiri untuk menambah pesanan</Text>
           </View>
         ) : (
           <ScrollView
@@ -629,6 +715,7 @@ export default function POSScreen() {
           onPress={handlePlaceOrder}
           disabled={cartItems.length === 0}
           style={styles.placeOrderBtn}
+          textStyle={{ color: '#FFFFFF', fontWeight: '700' }}
         >
           {cartItems.length === 0 ? 'Pilih Menu Dulu' : `Place Order (${formatRupiah(total)})`}
         </Button>
@@ -660,22 +747,28 @@ export default function POSScreen() {
               <Text style={styles.breadcrumbSub}>Billing Queue</Text>
             </View>
           ) : (
-            <View style={styles.datePill}>
-              <Ionicons name="calendar-outline" size={15} color="#475569" style={{ marginRight: 6 }} />
-              <Text style={styles.datePillText}>Wed, 29 May 2024</Text>
-              <Text style={styles.datePillDivider}> - </Text>
-              <Ionicons name="time-outline" size={15} color="#475569" style={{ marginRight: 6 }} />
-              <Text style={styles.datePillText}>07:59 AM</Text>
+            <View style={[styles.datePill, isMobile && { paddingHorizontal: 10, paddingVertical: 6 }]}>
+              <Ionicons
+                name={isMobile ? 'time-outline' : 'calendar-outline'}
+                size={14}
+                color="#2563EB"
+                style={{ marginRight: 5 }}
+              />
+              <Text style={styles.datePillText}>
+                {isMobile
+                  ? currentDateStr.split('•')[1]?.trim() || currentDateStr
+                  : currentDateStr}
+              </Text>
             </View>
           )}
         </View>
 
         {/* Header Right */}
-        <View style={styles.topHeaderRight}>
+        <View style={[styles.topHeaderRight, isMobile && { gap: 8 }]}>
           {currentView === 'activity' && (
             <View style={styles.datePillSmall}>
-              <Ionicons name="calendar-outline" size={15} color="#475569" style={{ marginRight: 6 }} />
-              <Text style={styles.datePillText}>Wed, 29 May 2024</Text>
+              <Ionicons name="calendar-outline" size={14} color="#2563EB" style={{ marginRight: 6 }} />
+              <Text style={styles.datePillText}>{currentDateStr}</Text>
             </View>
           )}
 
@@ -685,6 +778,7 @@ export default function POSScreen() {
             style={[
               styles.statusPill,
               isOpenOrder ? styles.statusPillOpen : styles.statusPillClose,
+              isMobile && { paddingHorizontal: 10, paddingVertical: 6 },
             ]}
             activeOpacity={0.8}
           >
@@ -698,6 +792,7 @@ export default function POSScreen() {
               style={[
                 styles.statusText,
                 isOpenOrder ? styles.statusTextOpen : styles.statusTextClose,
+                isMobile && { fontSize: 12 },
               ]}
             >
               {isOpenOrder ? 'Open Order' : 'Close Order'}
@@ -707,10 +802,10 @@ export default function POSScreen() {
           {/* Power button */}
           <TouchableOpacity
             onPress={() => router.replace('/')}
-            style={styles.powerBtn}
+            style={[styles.powerBtn, isMobile && { width: 34, height: 34, borderRadius: 17 }]}
             activeOpacity={0.7}
           >
-            <Ionicons name="power-outline" size={18} color="#0D9488" />
+            <Ionicons name="power-outline" size={isMobile ? 16 : 18} color="#0D9488" />
           </TouchableOpacity>
         </View>
       </View>
@@ -722,13 +817,17 @@ export default function POSScreen() {
           <View style={styles.productsSection}>
             <ScrollView
               showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.productsScroll}
+              contentContainerStyle={[
+                styles.productsScroll,
+                isMobile && { padding: 12, paddingBottom: 88 },
+                isTablet && { padding: 16, paddingBottom: 130 },
+              ]}
             >
               {/* Category Pills Row: TEXT-ONLY, NO ICONS! */}
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.categoryRow}
+                contentContainerStyle={[styles.categoryRow, isMobile && { paddingBottom: 12 }]}
               >
                 {CATEGORIES.map((cat) => {
                   const isActive = selectedCategory === cat.id;
@@ -771,25 +870,58 @@ export default function POSScreen() {
               </ScrollView>
 
               {/* Search Bar */}
-              <View style={styles.searchContainer}>
+              <View style={[styles.searchContainer, isMobile && { marginBottom: 12 }]}>
                 <SearchField
                   value={searchQuery}
                   onChangeText={setSearchQuery}
-                  placeholder="Search something sweet on your mind..."
+                  placeholder={
+                    isMobile
+                      ? 'Cari roti, cake, pastry...'
+                      : 'Cari produk bakery, roti, pastry, cake...'
+                  }
                   iconPosition="right"
                 />
               </View>
 
-              {/* Product Grid: 100% Equal Sized Cards (CSS Grid) */}
-              <View style={styles.gridContainer}>
+              {/* Product Grid: 2-Columns on Mobile, Fluid Grid on Tablet & Desktop */}
+              <View
+                style={[
+                  styles.gridContainer,
+                  Platform.select({
+                    web: {
+                      display: 'grid',
+                      gridTemplateColumns: isMobile
+                        ? 'repeat(2, minmax(0, 1fr))'
+                        : isTablet
+                        ? 'repeat(auto-fill, minmax(150px, 1fr))'
+                        : 'repeat(auto-fill, minmax(170px, 1fr))',
+                      gap: isMobile ? '10px' : '14px',
+                    } as any,
+                  }),
+                ]}
+              >
                 {filteredProducts.map((product) => (
                   <TouchableOpacity
                     key={product.id}
                     onPress={() => handleOpenDetail(product)}
                     activeOpacity={0.85}
-                    style={styles.productCard}
+                    style={[
+                      styles.productCard,
+                      isMobile && {
+                        height: 215,
+                        minHeight: 215,
+                        maxHeight: 215,
+                        padding: 10,
+                        borderRadius: 16,
+                      },
+                    ]}
                   >
-                    <View style={styles.productImageContainer}>
+                    <View
+                      style={[
+                        styles.productImageContainer,
+                        isMobile && { height: 110, borderRadius: 10, marginBottom: 6 },
+                      ]}
+                    >
                       <Image
                         source={{ uri: product.image }}
                         style={styles.productImage}
@@ -818,79 +950,153 @@ export default function POSScreen() {
               </View>
             </ScrollView>
 
-            {/* Bottom Docked Kitchen Track Order Drawer */}
-            <View style={styles.trackOrderTrayContainer}>
-              <View style={styles.trackOrderHeaderRow}>
-                <TouchableOpacity
-                  onPress={() => setTrackOrderOpen(!trackOrderOpen)}
-                  style={styles.trackOrderToggleBtn}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.trackOrderToggleText}>
-                    Track Order ({kitchenOrders.length}) {trackOrderOpen ? '–' : '+'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
+            {/* Bottom Docked Kitchen Track Order Drawer (Desktop & Tablet) */}
+            {!isMobile && (
+              <View style={styles.trackOrderTrayContainer}>
+                <View style={styles.trackOrderHeaderRow}>
+                  <TouchableOpacity
+                    onPress={() => setTrackOrderOpen(!trackOrderOpen)}
+                    style={styles.trackOrderToggleBtn}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="flame" size={13} color="#FFFFFF" style={{ marginRight: 6 }} />
+                    <Text style={styles.trackOrderToggleText}>
+                      Pesanan Dapur Aktif ({kitchenOrders.length})
+                    </Text>
+                    <Ionicons
+                      name={trackOrderOpen ? 'chevron-down' : 'chevron-up'}
+                      size={14}
+                      color="#FFFFFF"
+                      style={{ marginLeft: 6 }}
+                    />
+                  </TouchableOpacity>
+                </View>
 
-              {trackOrderOpen && (
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.trackOrderCardsRow}
-                >
-                  {kitchenOrders.map((order) => (
-                    <View key={order.id} style={styles.kitchenOrderCard}>
-                      <View style={styles.kitchenCardTop}>
-                        <Text style={styles.kitchenCustomerName}>
-                          {order.customerName}
-                        </Text>
-                        <Badge
-                          intent={order.statusColor}
-                          size="sm"
-                          shape="pill"
-                        >
-                          {order.status}
-                        </Badge>
-                      </View>
-                      <View style={styles.kitchenCardBottom}>
-                        <Text style={styles.kitchenTableText}>
-                          {order.table} • {order.orderType}
-                        </Text>
-                        <Text style={styles.kitchenTimeText}>{order.time}</Text>
-                      </View>
-                    </View>
-                  ))}
-                </ScrollView>
-              )}
-            </View>
+                {trackOrderOpen && (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.trackOrderCardsRow}
+                  >
+                    {kitchenOrders.map((order) => (
+                      <TouchableOpacity
+                        key={order.id}
+                        onPress={() => handleOpenTrackOrderDetail(order)}
+                        style={styles.kitchenOrderCard}
+                        activeOpacity={0.75}
+                      >
+                        <View style={styles.kitchenCardTop}>
+                          <Text style={styles.kitchenCustomerName}>
+                            {order.customerName}
+                          </Text>
+                          <Badge
+                            intent={order.statusColor}
+                            size="sm"
+                            shape="pill"
+                          >
+                            {order.status === 'On Kitchen Hand'
+                              ? 'Sedang Dimasak'
+                              : order.status === 'To be Served'
+                              ? 'Siap Saji'
+                              : 'Selesai'}
+                          </Badge>
+                        </View>
+                        <View style={styles.kitchenCardBottom}>
+                          <Text style={styles.kitchenTableText}>
+                            {order.table} • {order.orderType}
+                          </Text>
+                          <Text style={styles.kitchenTimeText}>{order.time}</Text>
+                        </View>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                )}
+              </View>
+            )}
           </View>
 
           {/* RIGHT SECTION: Cart Panel (Desktop / Tablet) */}
           {!isMobile && (
-            <View style={styles.cartSection}>
+            <View style={[styles.cartSection, isTablet && { width: 320 }]}>
               {renderCartPanel()}
             </View>
           )}
 
-          {/* Mobile Bottom Floating Cart Bar */}
+          {/* Mobile Unified Floating Bottom Bar */}
           {isMobile && (
-            <View style={styles.mobileBottomCartBar}>
-              <View>
-                <Text style={styles.mobileCartCountText}>
-                  {totalItemsCount} items
-                </Text>
-                <Text style={styles.mobileCartTotalText}>
-                  {formatRupiah(total)}
-                </Text>
-              </View>
-              <Button
-                intent="primary"
-                size="md"
-                shape="pill"
-                onPress={() => setMobileCartOpen(true)}
+            <View style={styles.mobileBottomBar}>
+              {/* Left: Quick Access to Pesanan Dapur */}
+              <TouchableOpacity
+                onPress={() => setMobileKitchenSheetOpen(true)}
+                style={styles.mobileKitchenBtn}
+                activeOpacity={0.8}
               >
-                View Order
-              </Button>
+                <View style={styles.mobileKitchenIconBadge}>
+                  <Ionicons name="flame" size={15} color="#EA580C" />
+                </View>
+                <View>
+                  <Text style={styles.mobileKitchenTitle}>Dapur</Text>
+                  <Text style={styles.mobileKitchenSub}>{kitchenOrders.length} Pesanan</Text>
+                </View>
+              </TouchableOpacity>
+
+              {/* Right: Cart Button */}
+              <TouchableOpacity
+                onPress={() => setMobileCartOpen(true)}
+                style={[
+                  styles.mobileCartBtn,
+                  cartItems.length > 0 ? styles.mobileCartBtnActive : styles.mobileCartBtnEmpty,
+                ]}
+                activeOpacity={0.85}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <View style={[
+                    styles.mobileCartIconBox,
+                    cartItems.length > 0 && styles.mobileCartIconBoxActive,
+                  ]}>
+                    <Ionicons
+                      name="bag-handle"
+                      size={16}
+                      color={cartItems.length > 0 ? '#FFFFFF' : '#64748B'}
+                    />
+                  </View>
+                  <View>
+                    <Text
+                      style={[
+                        styles.mobileCartBtnCount,
+                        cartItems.length > 0 && { color: 'rgba(255, 255, 255, 0.85)' },
+                      ]}
+                    >
+                      {cartItems.length > 0 ? `${totalItemsCount} item dipilih` : 'Keranjang Kosong'}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.mobileCartBtnPrice,
+                        cartItems.length > 0 && { color: '#FFFFFF' },
+                      ]}
+                    >
+                      {formatRupiah(total)}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={[
+                  styles.mobileCartArrowPill,
+                  cartItems.length > 0 && styles.mobileCartArrowPillActive,
+                ]}>
+                  <Text style={[
+                    styles.mobileCartArrowText,
+                    cartItems.length > 0 && { color: '#FFFFFF' },
+                  ]}>
+                    {cartItems.length > 0 ? 'Lihat' : 'Pilih'}
+                  </Text>
+                  <Ionicons
+                    name="chevron-forward"
+                    size={13}
+                    color={cartItems.length > 0 ? '#FFFFFF' : '#64748B'}
+                  />
+                </View>
+              </TouchableOpacity>
             </View>
           )}
         </View>
@@ -1155,79 +1361,151 @@ export default function POSScreen() {
 
               <View style={styles.detailSectionDivider} />
 
-              {/* GROUPED ADD-ONS SECTION: "Extra Addons" & "Plus Addons" */}
-              <View style={styles.allAddonGroupsWrapper}>
-                {currentProductAddonGroups.map((group, groupIdx) => (
-                  <View key={groupIdx} style={styles.addonGroupContainer}>
-                    <View style={styles.addonGroupHeader}>
-                      <Text style={styles.addonGroupMainTitle}>{group.title}</Text>
-                      {group.subtitle ? (
-                        <Text style={styles.addonGroupSubtitle}>{group.subtitle}</Text>
-                      ) : null}
-                    </View>
+              {/* ADD-ONS SECTION: EITHER GROUPING ADDONS OR ADDONS BIASA */}
+              {isDetailProductGrouped ? (
+                /* TYPE 1: GROUPING ADDONS ("Extra Addons", "Plus Addons") */
+                <View style={styles.allAddonGroupsWrapper}>
+                  {currentProductAddonGroups.map((group, groupIdx) => (
+                    <View key={groupIdx} style={styles.addonGroupContainer}>
+                      <View style={styles.addonGroupHeader}>
+                        <Text style={styles.addonGroupMainTitle}>{group.title}</Text>
+                        {group.subtitle ? (
+                          <Text style={styles.addonGroupSubtitle}>{group.subtitle}</Text>
+                        ) : null}
+                      </View>
 
-                    {/* Vertical list of addons */}
-                    <View style={styles.addonsVerticalList}>
-                      {group.addons.map((addon, addonIdx) => {
-                        const isSelected = selectedAddons.some((a) => a.id === addon.id);
-                        return (
-                          <TouchableOpacity
-                            key={addon.id}
-                            onPress={() => toggleAddonInDetail(addon)}
-                            activeOpacity={0.8}
-                            style={[
-                              styles.addonRowCard,
-                              isSelected && styles.addonRowCardSelected,
-                            ]}
-                          >
-                            <View style={styles.addonRowLeft}>
-                              <View
-                                style={[
-                                  styles.addonCheckbox,
-                                  isSelected && styles.addonCheckboxSelected,
-                                ]}
-                              >
-                                {isSelected && (
-                                  <Ionicons name="checkmark" size={13} color="#FFFFFF" />
-                                )}
-                              </View>
-                              <View style={styles.addonTextGroup}>
-                                <Text
-                                  style={[
-                                    styles.addonRowTitle,
-                                    isSelected && styles.addonRowTitleSelected,
-                                  ]}
-                                >
-                                  {addonIdx + 1}. {addon.name}
-                                </Text>
-                                <Text style={styles.addonRowDescription}>
-                                  {addon.description}
-                                </Text>
-                              </View>
-                            </View>
-
-                            <View
+                      {/* Vertical list of addons with 1. 2. 3. numbering */}
+                      <View style={styles.addonsVerticalList}>
+                        {group.addons.map((addon, addonIdx) => {
+                          const isSelected = selectedAddons.some((a) => a.id === addon.id);
+                          return (
+                            <TouchableOpacity
+                              key={addon.id}
+                              onPress={() => toggleAddonInDetail(addon)}
+                              activeOpacity={0.8}
                               style={[
-                                styles.addonPriceBadge,
-                                isSelected && styles.addonPriceBadgeSelected,
+                                styles.addonRowCard,
+                                isSelected && styles.addonRowCardSelected,
                               ]}
                             >
-                              <Text
+                              <View style={styles.addonRowLeft}>
+                                <View
+                                  style={[
+                                    styles.addonCheckbox,
+                                    isSelected && styles.addonCheckboxSelected,
+                                  ]}
+                                >
+                                  {isSelected && (
+                                    <Ionicons name="checkmark" size={13} color="#FFFFFF" />
+                                  )}
+                                </View>
+                                <View style={styles.addonTextGroup}>
+                                  <Text
+                                    style={[
+                                      styles.addonRowTitle,
+                                      isSelected && styles.addonRowTitleSelected,
+                                    ]}
+                                  >
+                                    {addonIdx + 1}. {addon.name}
+                                  </Text>
+                                  <Text style={styles.addonRowDescription}>
+                                    {addon.description}
+                                  </Text>
+                                </View>
+                              </View>
+
+                              <View
                                 style={[
-                                  styles.addonPriceText,
-                                  isSelected && styles.addonPriceTextSelected,
+                                  styles.addonPriceBadge,
+                                  isSelected && styles.addonPriceBadgeSelected,
                                 ]}
                               >
-                                +{formatRupiah(addon.price)}
+                                <Text
+                                  style={[
+                                    styles.addonPriceText,
+                                    isSelected && styles.addonPriceTextSelected,
+                                  ]}
+                                >
+                                  +{formatRupiah(addon.price)}
+                                </Text>
+                              </View>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              ) : (
+                /* TYPE 2: ADDONS BIASA (Flat List) */
+                <View style={styles.addonGroupContainer}>
+                  <View style={styles.addonGroupHeader}>
+                    <Text style={styles.addonGroupMainTitle}>Pilihan Tambahan (Add-ons)</Text>
+                    <Text style={styles.addonGroupSubtitle}>
+                      Kustomisasi pesananmu dengan pilihan ekstra lezat di bawah ini
+                    </Text>
+                  </View>
+
+                  <View style={styles.addonsVerticalList}>
+                    {currentProductFlatAddons.map((addon, addonIdx) => {
+                      const isSelected = selectedAddons.some((a) => a.id === addon.id);
+                      return (
+                        <TouchableOpacity
+                          key={addon.id}
+                          onPress={() => toggleAddonInDetail(addon)}
+                          activeOpacity={0.8}
+                          style={[
+                            styles.addonRowCard,
+                            isSelected && styles.addonRowCardSelected,
+                          ]}
+                        >
+                          <View style={styles.addonRowLeft}>
+                            <View
+                              style={[
+                                styles.addonCheckbox,
+                                isSelected && styles.addonCheckboxSelected,
+                              ]}
+                            >
+                              {isSelected && (
+                                <Ionicons name="checkmark" size={13} color="#FFFFFF" />
+                              )}
+                            </View>
+                            <View style={styles.addonTextGroup}>
+                              <Text
+                                style={[
+                                  styles.addonRowTitle,
+                                  isSelected && styles.addonRowTitleSelected,
+                                ]}
+                              >
+                                {addonIdx + 1}. {addon.name}
+                              </Text>
+                              <Text style={styles.addonRowDescription}>
+                                {addon.description}
                               </Text>
                             </View>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
+                          </View>
+
+                          <View
+                            style={[
+                              styles.addonPriceBadge,
+                              isSelected && styles.addonPriceBadgeSelected,
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.addonPriceText,
+                                isSelected && styles.addonPriceTextSelected,
+                              ]}
+                            >
+                              +{formatRupiah(addon.price)}
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
                   </View>
-                ))}
-              </View>
+                </View>
+              )}
 
               <View style={styles.detailSectionDivider} />
 
@@ -1260,6 +1538,7 @@ export default function POSScreen() {
                 shape="rounded"
                 onPress={handleAddToCartFromDetail}
                 style={styles.detailAddToCartBtn}
+                textStyle={{ color: '#FFFFFF', fontWeight: '700' }}
               >
                 Tambah ke Pesanan • {formatRupiah(detailModalUnitPrice * detailQuantity)}
               </Button>
@@ -1458,75 +1737,148 @@ export default function POSScreen() {
               </Text>
 
               {/* Addons Selection in Edit */}
-              <View style={styles.allAddonGroupsWrapper}>
-                {(editingCartItem.product.addonGroups || 
-                  (editingCartItem.product.category === 'Sandwich' || editingCartItem.product.category === 'Bread'
-                    ? SAVORY_ADDON_GROUPS
-                    : SWEET_ADDON_GROUPS)).map((group, groupIdx) => (
-                  <View key={groupIdx} style={styles.addonGroupContainer}>
-                    <View style={styles.addonGroupHeader}>
-                      <Text style={styles.addonGroupMainTitle}>{group.title}</Text>
-                    </View>
-                    <View style={styles.addonsVerticalList}>
-                      {group.addons.map((addon, addonIdx) => {
-                        const isSelected = cartItemEditAddons.some((a) => a.id === addon.id);
-                        return (
-                          <TouchableOpacity
-                            key={addon.id}
-                            onPress={() => toggleAddonInEdit(addon)}
-                            activeOpacity={0.8}
-                            style={[
-                              styles.addonRowCard,
-                              isSelected && styles.addonRowCardSelected,
-                            ]}
-                          >
-                            <View style={styles.addonRowLeft}>
-                              <View
-                                style={[
-                                  styles.addonCheckbox,
-                                  isSelected && styles.addonCheckboxSelected,
-                                ]}
-                              >
-                                {isSelected && (
-                                  <Ionicons name="checkmark" size={13} color="#FFFFFF" />
-                                )}
-                              </View>
-                              <View style={styles.addonTextGroup}>
-                                <Text
-                                  style={[
-                                    styles.addonRowTitle,
-                                    isSelected && styles.addonRowTitleSelected,
-                                  ]}
-                                >
-                                  {addonIdx + 1}. {addon.name}
-                                </Text>
-                                <Text style={styles.addonRowDescription}>
-                                  {addon.description}
-                                </Text>
-                              </View>
-                            </View>
-                            <View
+              {(editingCartItem.product.addonType === 'grouped' ||
+                (editingCartItem.product.addonGroups && editingCartItem.product.addonGroups.length > 0)) ? (
+                <View style={styles.allAddonGroupsWrapper}>
+                  {(editingCartItem.product.addonGroups || 
+                    (editingCartItem.product.category === 'Sandwich' || editingCartItem.product.category === 'Bread'
+                      ? SAVORY_ADDON_GROUPS
+                      : SWEET_ADDON_GROUPS)).map((group, groupIdx) => (
+                    <View key={groupIdx} style={styles.addonGroupContainer}>
+                      <View style={styles.addonGroupHeader}>
+                        <View style={styles.addonGroupTitleRow}>
+                          <Text style={styles.addonGroupMainTitle}>{group.title}</Text>
+                        </View>
+                      </View>
+                      <View style={styles.addonsVerticalList}>
+                        {group.addons.map((addon, addonIdx) => {
+                          const isSelected = cartItemEditAddons.some((a) => a.id === addon.id);
+                          return (
+                            <TouchableOpacity
+                              key={addon.id}
+                              onPress={() => toggleAddonInEdit(addon)}
+                              activeOpacity={0.8}
                               style={[
-                                styles.addonPriceBadge,
-                                isSelected && styles.addonPriceBadgeSelected,
+                                styles.addonRowCard,
+                                isSelected && styles.addonRowCardSelected,
                               ]}
                             >
-                              <Text
+                              <View style={styles.addonRowLeft}>
+                                <View
+                                  style={[
+                                    styles.addonCheckbox,
+                                    isSelected && styles.addonCheckboxSelected,
+                                  ]}
+                                >
+                                  {isSelected && (
+                                    <Ionicons name="checkmark" size={13} color="#FFFFFF" />
+                                  )}
+                                </View>
+                                <View style={styles.addonTextGroup}>
+                                  <Text
+                                    style={[
+                                      styles.addonRowTitle,
+                                      isSelected && styles.addonRowTitleSelected,
+                                    ]}
+                                  >
+                                    {addonIdx + 1}. {addon.name}
+                                  </Text>
+                                  <Text style={styles.addonRowDescription}>
+                                    {addon.description}
+                                  </Text>
+                                </View>
+                              </View>
+                              <View
                                 style={[
-                                  styles.addonPriceText,
-                                  isSelected && styles.addonPriceTextSelected,
+                                  styles.addonPriceBadge,
+                                  isSelected && styles.addonPriceBadgeSelected,
                                 ]}
                               >
-                                +{formatRupiah(addon.price)}
-                              </Text>
-                            </View>
-                          </TouchableOpacity>
-                        );
-                      })}
+                                <Text
+                                  style={[
+                                    styles.addonPriceText,
+                                    isSelected && styles.addonPriceTextSelected,
+                                  ]}
+                                >
+                                  +{formatRupiah(addon.price)}
+                                </Text>
+                              </View>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              ) : (
+                <View style={styles.addonGroupContainer}>
+                  <View style={styles.addonGroupHeader}>
+                    <View style={styles.addonGroupTitleRow}>
+                      <Text style={styles.addonGroupMainTitle}>Pilihan Addons</Text>
                     </View>
                   </View>
-                ))}
-              </View>
+                  <View style={styles.addonsVerticalList}>
+                    {(editingCartItem.product.availableAddons || 
+                      (editingCartItem.product.category === 'Sandwich' || editingCartItem.product.category === 'Bread'
+                        ? FLAT_SAVORY_ADDONS
+                        : FLAT_SWEET_ADDONS)).map((addon, addonIdx) => {
+                      const isSelected = cartItemEditAddons.some((a) => a.id === addon.id);
+                      return (
+                        <TouchableOpacity
+                          key={addon.id}
+                          onPress={() => toggleAddonInEdit(addon)}
+                          activeOpacity={0.8}
+                          style={[
+                            styles.addonRowCard,
+                            isSelected && styles.addonRowCardSelected,
+                          ]}
+                        >
+                          <View style={styles.addonRowLeft}>
+                            <View
+                              style={[
+                                styles.addonCheckbox,
+                                isSelected && styles.addonCheckboxSelected,
+                              ]}
+                            >
+                              {isSelected && (
+                                <Ionicons name="checkmark" size={13} color="#FFFFFF" />
+                              )}
+                            </View>
+                            <View style={styles.addonTextGroup}>
+                              <Text
+                                style={[
+                                  styles.addonRowTitle,
+                                  isSelected && styles.addonRowTitleSelected,
+                                ]}
+                              >
+                                {addonIdx + 1}. {addon.name}
+                              </Text>
+                              <Text style={styles.addonRowDescription}>
+                                {addon.description}
+                              </Text>
+                            </View>
+                          </View>
+                          <View
+                            style={[
+                              styles.addonPriceBadge,
+                              isSelected && styles.addonPriceBadgeSelected,
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.addonPriceText,
+                                isSelected && styles.addonPriceTextSelected,
+                              ]}
+                            >
+                              +{formatRupiah(addon.price)}
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+              )}
 
               <TextField
                 label="Catatan Khusus"
@@ -1725,16 +2077,586 @@ export default function POSScreen() {
         </View>
       </Dialog>
 
-      {/* 11. MOBILE CART MODAL SHEET */}
+      {/* 11. TRACK ORDER DETAIL MODAL */}
+      <Dialog
+        isOpen={trackOrderDetailModalOpen}
+        onClose={() => setTrackOrderDetailModalOpen(false)}
+        title={selectedTrackOrder ? `Tiket Pesanan Dapur • ${selectedTrackOrder.orderNumber}` : 'Detail Tiket Dapur'}
+        maxWidth={460}
+      >
+        {selectedTrackOrder && (
+          <View style={styles.trackOrderDetailWrapper}>
+            {/* Header info */}
+            <View style={styles.todHeaderCard}>
+              <View style={styles.todHeaderTop}>
+                <View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Text style={styles.todCustomerName}>{selectedTrackOrder.customerName}</Text>
+                    <Badge
+                      intent={
+                        selectedTrackOrder.status === 'On Kitchen Hand'
+                          ? 'amber'
+                          : selectedTrackOrder.status === 'To be Served'
+                          ? 'blue'
+                          : 'mint'
+                      }
+                      size="sm"
+                      shape="pill"
+                    >
+                      {selectedTrackOrder.status === 'On Kitchen Hand'
+                        ? 'Sedang Dimasak'
+                        : selectedTrackOrder.status === 'To be Served'
+                        ? 'Siap Disajikan'
+                        : 'Selesai'}
+                    </Badge>
+                  </View>
+                  <Text style={styles.todOrderNum}>
+                    {selectedTrackOrder.orderNumber} • Meja {selectedTrackOrder.table.replace('Table', '').trim()}
+                  </Text>
+                </View>
+                <View style={styles.todTimeBadge}>
+                  <Ionicons name="time-outline" size={13} color="#64748B" />
+                  <Text style={styles.todTimeText}>{selectedTrackOrder.time}</Text>
+                </View>
+              </View>
+
+              {/* Clean, monochrome metadata chips (no rainbow icons) */}
+              <View style={styles.todMetaRow}>
+                <View style={styles.todMetaItem}>
+                  <Ionicons name="restaurant-outline" size={13} color="#64748B" />
+                  <Text style={styles.todMetaText}>{selectedTrackOrder.table}</Text>
+                </View>
+                <View style={styles.todMetaDivider} />
+                <View style={styles.todMetaItem}>
+                  <Ionicons name="storefront-outline" size={13} color="#64748B" />
+                  <Text style={styles.todMetaText}>{selectedTrackOrder.orderType}</Text>
+                </View>
+                <View style={styles.todMetaDivider} />
+                <View style={styles.todMetaItem}>
+                  <Ionicons name="receipt-outline" size={13} color="#64748B" />
+                  <Text style={styles.todMetaText}>{selectedTrackOrder.totalItems} Items</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* List of items with real prices */}
+            <View style={styles.todItemsSection}>
+              <View style={styles.todSectionHeaderRow}>
+                <Text style={styles.todSectionTitle}>Daftar Menu Pesanan</Text>
+                <Text style={styles.todSectionCount}>{selectedTrackOrder.items.length} Menu</Text>
+              </View>
+              <ScrollView style={{ maxHeight: 210 }} showsVerticalScrollIndicator={false}>
+                <View style={{ gap: 8 }}>
+                  {selectedTrackOrder.items.map((item, idx) => {
+                    const itemPrice = item.price || 35000;
+                    const subtotal = itemPrice * item.qty;
+                    return (
+                      <View key={idx} style={styles.todItemRow}>
+                        <View style={styles.todItemLeft}>
+                          <View style={styles.todQtyBadge}>
+                            <Text style={styles.todQtyText}>{item.qty}x</Text>
+                          </View>
+                          <View>
+                            <Text style={styles.todItemName}>{item.name}</Text>
+                            <Text style={styles.todItemUnitHint}>
+                              {formatRupiah(itemPrice)} / porsi
+                            </Text>
+                          </View>
+                        </View>
+                        <Text style={styles.todItemPrice}>{formatRupiah(subtotal)}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+
+              <View style={styles.todOrderSummaryRow}>
+                <Text style={styles.todSummaryLabel}>Total Nilai Pesanan</Text>
+                <Text style={styles.todSummaryValue}>
+                  {formatRupiah(
+                    selectedTrackOrder.items.reduce(
+                      (sum, i) => sum + (i.price || 35000) * i.qty,
+                      0
+                    )
+                  )}
+                </Text>
+              </View>
+            </View>
+
+            {/* Kitchen Progression Timeline (Professional KDS status) */}
+            <View style={styles.todStatusSection}>
+              <Text style={styles.todSectionTitle}>Status Alur Dapur (KDS)</Text>
+              <View style={styles.kdsStatusProgress}>
+                <View
+                  style={[
+                    styles.kdsStep,
+                    (selectedTrackOrder.status === 'On Kitchen Hand' ||
+                      selectedTrackOrder.status === 'To be Served' ||
+                      selectedTrackOrder.status === 'All Done') &&
+                      styles.kdsStepDone,
+                    selectedTrackOrder.status === 'On Kitchen Hand' && styles.kdsStepCurrent,
+                  ]}
+                >
+                  <Ionicons
+                    name={
+                      selectedTrackOrder.status === 'To be Served' || selectedTrackOrder.status === 'All Done'
+                        ? 'checkmark-circle'
+                        : 'flame'
+                    }
+                    size={13}
+                    color={
+                      selectedTrackOrder.status === 'On Kitchen Hand'
+                        ? '#D97706'
+                        : selectedTrackOrder.status === 'To be Served' || selectedTrackOrder.status === 'All Done'
+                        ? '#059669'
+                        : '#94A3B8'
+                    }
+                  />
+                  <Text
+                    style={[
+                      styles.kdsStepText,
+                      selectedTrackOrder.status === 'On Kitchen Hand' && styles.kdsStepTextCurrent,
+                    ]}
+                  >
+                    1. Dimasak
+                  </Text>
+                </View>
+
+                <Ionicons name="chevron-forward" size={13} color="#CBD5E1" />
+
+                <View
+                  style={[
+                    styles.kdsStep,
+                    (selectedTrackOrder.status === 'To be Served' ||
+                      selectedTrackOrder.status === 'All Done') &&
+                      styles.kdsStepDone,
+                    selectedTrackOrder.status === 'To be Served' && styles.kdsStepCurrent,
+                  ]}
+                >
+                  <Ionicons
+                    name={
+                      selectedTrackOrder.status === 'All Done' ? 'checkmark-circle' : 'restaurant'
+                    }
+                    size={13}
+                    color={
+                      selectedTrackOrder.status === 'To be Served'
+                        ? '#2563EB'
+                        : selectedTrackOrder.status === 'All Done'
+                        ? '#059669'
+                        : '#94A3B8'
+                    }
+                  />
+                  <Text
+                    style={[
+                      styles.kdsStepText,
+                      selectedTrackOrder.status === 'To be Served' && styles.kdsStepTextCurrent,
+                    ]}
+                  >
+                    2. Siap Saji
+                  </Text>
+                </View>
+
+                <Ionicons name="chevron-forward" size={13} color="#CBD5E1" />
+
+                <View
+                  style={[
+                    styles.kdsStep,
+                    selectedTrackOrder.status === 'All Done' && styles.kdsStepDone,
+                    selectedTrackOrder.status === 'All Done' && styles.kdsStepCurrent,
+                  ]}
+                >
+                  <Ionicons
+                    name="checkmark-circle"
+                    size={13}
+                    color={selectedTrackOrder.status === 'All Done' ? '#059669' : '#94A3B8'}
+                  />
+                  <Text
+                    style={[
+                      styles.kdsStepText,
+                      selectedTrackOrder.status === 'All Done' && styles.kdsStepTextCurrent,
+                    ]}
+                  >
+                    3. Selesai
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Actions */}
+            <View style={styles.todActionsRow}>
+              {selectedTrackOrder.status !== 'All Done' ? (
+                <Button
+                  intent="primary"
+                  size="md"
+                  shape="rounded"
+                  onPress={() => handleAdvanceOrderStatus(selectedTrackOrder.id)}
+                  style={{ flex: 1 }}
+                  textStyle={{ color: '#FFFFFF', fontWeight: '700' }}
+                >
+                  {selectedTrackOrder.status === 'On Kitchen Hand'
+                    ? 'Tandai Siap Saji ➔'
+                    : 'Selesaikan Pesanan ✓'}
+                </Button>
+              ) : (
+                <View style={styles.todCompletedBanner}>
+                  <Ionicons name="checkmark-circle" size={18} color="#059669" />
+                  <Text style={styles.todCompletedText}>Pesanan telah selesai & disajikan!</Text>
+                </View>
+              )}
+              <Button
+                intent="outline"
+                size="md"
+                shape="rounded"
+                onPress={() => setTrackOrderDetailModalOpen(false)}
+              >
+                Tutup
+              </Button>
+            </View>
+          </View>
+        )}
+      </Dialog>
+
+      {/* 12. MOBILE CART BOTTOM SHEET (100% RESPONSIVE & STICKY CTA) */}
       {isMobile && (
-        <Dialog
-          isOpen={mobileCartOpen}
-          onClose={() => setMobileCartOpen(false)}
-          title="Current Order"
-          maxWidth={460}
+        <Modal
+          visible={mobileCartOpen}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setMobileCartOpen(false)}
         >
-          {renderCartPanel()}
-        </Dialog>
+          <View style={styles.mobileSheetOverlay}>
+            <TouchableOpacity
+              style={styles.mobileSheetBackdrop}
+              activeOpacity={1}
+              onPress={() => setMobileCartOpen(false)}
+            />
+            <View style={styles.mobileCartSheetContainer}>
+              {/* Sheet Drag Handle */}
+              <View style={styles.sheetDragHandleRow}>
+                <View style={styles.sheetDragHandle} />
+              </View>
+
+              {/* Sheet Header */}
+              <View style={styles.mobileSheetHeader}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={styles.mobileSheetTitle}>Pesanan Saat Ini</Text>
+                  <Badge intent="blue" size="sm" shape="pill">
+                    {orderNumber}
+                  </Badge>
+                </View>
+                <TouchableOpacity
+                  onPress={() => setMobileCartOpen(false)}
+                  style={styles.mobileSheetCloseBtn}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons name="close" size={18} color="#64748B" />
+                </TouchableOpacity>
+              </View>
+
+              {/* Scrollable Middle Content */}
+              <ScrollView
+                style={styles.mobileCartScroll}
+                contentContainerStyle={styles.mobileCartScrollContent}
+                showsVerticalScrollIndicator={false}
+              >
+                {/* Customer name bar */}
+                <View style={styles.mobileCustomerRow}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <View style={styles.receiptIconBoxSmall}>
+                      <Ionicons name="person-outline" size={15} color="#2563EB" />
+                    </View>
+                    <View>
+                      <Text style={styles.mobileCustomerName}>{customerName}</Text>
+                      <Text style={styles.mobileOrderSub}>Nomor Order: {orderNumber}</Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setTempCustomerName(customerName);
+                      setIsEditingCustomer(true);
+                    }}
+                    style={styles.mobileEditCustBtn}
+                  >
+                    <Ionicons name="pencil-outline" size={14} color="#2563EB" />
+                    <Text style={styles.mobileEditCustText}>Ubah</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Table & Order Type Selectors */}
+                <View style={styles.selectRow}>
+                  <View style={styles.selectCol}>
+                    <Select
+                      value={selectedTable}
+                      onChange={(val) => setSelectedTable(val)}
+                      options={tableOptions}
+                      placeholder="Pilih Meja"
+                      label="Pilih Meja (Dine In)"
+                      shape="pill"
+                      size="md"
+                    />
+                  </View>
+                  <View style={styles.selectCol}>
+                    <Select
+                      value={selectedOrderType}
+                      onChange={(val) => setSelectedOrderType(val)}
+                      options={ORDER_TYPES}
+                      placeholder="Order Type"
+                      shape="pill"
+                      size="md"
+                    />
+                  </View>
+                </View>
+
+                {/* Cart Items List */}
+                <View style={styles.mobileCartItemsList}>
+                  {cartItems.length === 0 ? (
+                    <View style={styles.emptyCartContainer}>
+                      <View style={styles.emptyCartIconCircle}>
+                        <Ionicons name="bag-handle-outline" size={24} color="#2563EB" />
+                      </View>
+                      <Text style={styles.emptyCartText}>Belum Ada Menu Dipilih</Text>
+                      <Text style={styles.emptyCartSub}>
+                        Pilih menu bakery di katalog untuk menambah pesanan
+                      </Text>
+                    </View>
+                  ) : (
+                    cartItems.map((item) => {
+                      const unitPrice = getItemUnitPrice(item);
+                      const hasAddons = item.addons && item.addons.length > 0;
+                      return (
+                        <View key={item.id} style={styles.cartItemRow}>
+                          <Image
+                            source={{ uri: item.product.image }}
+                            style={styles.cartItemThumb}
+                          />
+                          <View style={styles.cartItemDetails}>
+                            <Text style={styles.cartItemName} numberOfLines={1}>
+                              {item.product.name}
+                            </Text>
+                            <Text style={styles.cartItemPrice}>
+                              {formatRupiah(unitPrice)}
+                            </Text>
+                            {hasAddons && (
+                              <View style={styles.cartAddonsRow}>
+                                {item.addons!.map((addon) => (
+                                  <Text key={addon.id} style={styles.cartAddonTag}>
+                                    {addon.name}
+                                  </Text>
+                                ))}
+                              </View>
+                            )}
+                            {item.note ? (
+                              <Text style={styles.cartItemNoteBadge} numberOfLines={1}>
+                                Note: {item.note}
+                              </Text>
+                            ) : null}
+                          </View>
+
+                          <TouchableOpacity
+                            onPress={() => openCartItemEdit(item)}
+                            style={styles.editItemBtn}
+                          >
+                            <Ionicons name="create-outline" size={15} color="#475569" />
+                          </TouchableOpacity>
+
+                          <Stepper
+                            value={item.quantity}
+                            min={1}
+                            max={99}
+                            onChange={(val) => updateCartQuantity(item.id, val)}
+                            size="sm"
+                            style={styles.cartStepper}
+                          />
+
+                          <TouchableOpacity
+                            onPress={() => removeCartItem(item.id)}
+                            style={styles.deleteItemBtn}
+                          >
+                            <Ionicons name="trash-outline" size={14} color="#EF4444" />
+                          </TouchableOpacity>
+                        </View>
+                      );
+                    })
+                  )}
+                </View>
+
+                {/* Calculation Breakdown */}
+                <View style={styles.summarySection}>
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>Subtotal</Text>
+                    <Text style={styles.summaryValue}>{formatRupiah(subtotal)}</Text>
+                  </View>
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>Tax (10%)</Text>
+                    <Text style={styles.summaryValue}>{formatRupiah(tax)}</Text>
+                  </View>
+                  {appliedPromo && discount > 0 && (
+                    <View style={styles.summaryRow}>
+                      <Text style={styles.discountLabel}>Discount ({appliedPromo.code})</Text>
+                      <Text style={styles.discountValue}>-{formatRupiah(discount)}</Text>
+                    </View>
+                  )}
+                  <View style={styles.dashedDivider} />
+                  <View style={[styles.summaryRow, styles.totalRow]}>
+                    <Text style={styles.totalLabel}>TOTAL</Text>
+                    <Text style={styles.totalValue}>{formatRupiah(total)}</Text>
+                  </View>
+
+                  {/* Promo & Payment */}
+                  <View style={styles.paymentActionRow}>
+                    {appliedPromo ? (
+                      <TouchableOpacity
+                        onPress={() => setAppliedPromo(null)}
+                        style={styles.promoAppliedPill}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={styles.promoAppliedText} numberOfLines={1}>
+                          {appliedPromo.code} (-{formatRupiah(discount)})
+                        </Text>
+                        <View style={styles.promoCheckCircle}>
+                          <Ionicons name="close" size={12} color="#FFFFFF" />
+                        </View>
+                      </TouchableOpacity>
+                    ) : (
+                      <TouchableOpacity
+                        onPress={() => {
+                          setPromoError('');
+                          setPromoModalOpen(true);
+                        }}
+                        style={styles.addPromoPill}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={styles.addPromoText}>Apply Voucher / Promo</Text>
+                        <Ionicons name="pricetag-outline" size={14} color="#64748B" />
+                      </TouchableOpacity>
+                    )}
+
+                    <TouchableOpacity
+                      onPress={() => setPaymentModalOpen(true)}
+                      style={styles.paymentMethodPill}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.paymentMethodText}>{paymentMethod}</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </ScrollView>
+
+              {/* STICKY BOTTOM CHECKOUT BUTTON (NEVER CUT OFF!) */}
+              <View style={styles.mobileStickyBottomCta}>
+                <Button
+                  intent="primary"
+                  size="lg"
+                  shape="rounded"
+                  onPress={handlePlaceOrder}
+                  disabled={cartItems.length === 0}
+                  style={{ width: '100%' }}
+                  textStyle={{ color: '#FFFFFF', fontWeight: '700' }}
+                >
+                  {cartItems.length === 0
+                    ? 'Pilih Menu Dulu'
+                    : `Place Order (${formatRupiah(total)})`}
+                </Button>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* 13. MOBILE KITCHEN ORDERS BOTTOM SHEET */}
+      {isMobile && (
+        <Modal
+          visible={mobileKitchenSheetOpen}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setMobileKitchenSheetOpen(false)}
+        >
+          <View style={styles.mobileSheetOverlay}>
+            <TouchableOpacity
+              style={styles.mobileSheetBackdrop}
+              activeOpacity={1}
+              onPress={() => setMobileKitchenSheetOpen(false)}
+            />
+            <View style={styles.mobileKitchenSheetContainer}>
+              <View style={styles.sheetDragHandleRow}>
+                <View style={styles.sheetDragHandle} />
+              </View>
+
+              <View style={styles.mobileSheetHeader}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Ionicons name="flame" size={18} color="#EA580C" />
+                  <Text style={styles.mobileSheetTitle}>Pesanan Dapur Aktif</Text>
+                  <Badge intent="amber" size="sm" shape="pill">
+                    {kitchenOrders.length}
+                  </Badge>
+                </View>
+                <TouchableOpacity
+                  onPress={() => setMobileKitchenSheetOpen(false)}
+                  style={styles.mobileSheetCloseBtn}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons name="close" size={18} color="#64748B" />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView
+                style={styles.mobileKitchenScroll}
+                contentContainerStyle={styles.mobileKitchenScrollContent}
+                showsVerticalScrollIndicator={false}
+              >
+                <View style={{ gap: 10 }}>
+                  {kitchenOrders.map((order) => (
+                    <TouchableOpacity
+                      key={order.id}
+                      onPress={() => {
+                        setMobileKitchenSheetOpen(false);
+                        handleOpenTrackOrderDetail(order);
+                      }}
+                      activeOpacity={0.8}
+                      style={styles.mobileKitchenCard}
+                    >
+                      <View style={styles.mobileKitchenCardTop}>
+                        <View>
+                          <Text style={styles.mobileKitchenCustName}>
+                            {order.customerName}
+                          </Text>
+                          <Text style={styles.mobileKitchenOrderNum}>
+                            {order.orderNumber} • {order.table} • {order.orderType}
+                          </Text>
+                        </View>
+                        <Badge intent={order.statusColor} size="sm" shape="pill">
+                          {order.status === 'On Kitchen Hand'
+                            ? 'Sedang Dimasak'
+                            : order.status === 'To be Served'
+                            ? 'Siap Saji'
+                            : 'Selesai'}
+                        </Badge>
+                      </View>
+
+                      <View style={styles.mobileKitchenCardDivider} />
+
+                      <View style={styles.mobileKitchenItemsList}>
+                        {order.items.map((item, idx) => (
+                          <Text key={idx} style={styles.mobileKitchenItemLine} numberOfLines={1}>
+                            {item.qty}x  {item.name}
+                          </Text>
+                        ))}
+                      </View>
+
+                      <View style={styles.mobileKitchenCardFooter}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          <Ionicons name="time-outline" size={12} color="#64748B" />
+                          <Text style={styles.mobileKitchenTimeText}>{order.time}</Text>
+                        </View>
+                        <Text style={styles.mobileKitchenDetailHint}>Lihat Tiket Dapur ➔</Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
       )}
     </SafeAreaView>
   );
@@ -1965,30 +2887,37 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
 
-  // PRODUCT GRID: EXACT IDENTICAL DIMENSIONS ACROSS ALL ROWS
+  // PRODUCT GRID: 100% IDENTICAL DIMENSIONS ACROSS ALL ROWS & COLUMNS
   gridContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 14,
+    width: '100%',
     ...Platform.select({
       web: {
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))',
+        gridTemplateColumns: 'repeat(auto-fill, 172px)',
         gap: '14px',
       } as any,
     }),
   },
   productCard: {
+    width: '100%',
+    minWidth: 0,
+    maxWidth: '100%',
+    height: 220,
+    minHeight: 220,
+    maxHeight: 220,
+    flexGrow: 1,
+    flexShrink: 0,
     backgroundColor: '#FFFFFF',
     borderRadius: 18,
     borderWidth: 1,
     borderColor: '#E2E8F0',
     overflow: 'hidden',
     padding: 12,
-    display: 'flex',
     flexDirection: 'column',
     justifyContent: 'space-between',
-    minHeight: 215,
     ...Platform.select({
       web: {
         cursor: 'pointer',
@@ -1999,18 +2928,17 @@ const styles = StyleSheet.create({
   },
   productImageContainer: {
     width: '100%',
-    height: 120,
+    height: 116,
     borderRadius: 12,
     backgroundColor: '#F1F5F9',
     overflow: 'hidden',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   productImage: {
     width: '100%',
     height: '100%',
   },
   productInfo: {
-    gap: 6,
     flex: 1,
     justifyContent: 'space-between',
   },
@@ -2018,12 +2946,14 @@ const styles = StyleSheet.create({
     fontSize: 13.5,
     fontWeight: '700',
     color: '#0F172A',
-    minHeight: 18,
+    height: 20,
+    lineHeight: 20,
   },
   productMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    height: 24,
     marginTop: 4,
   },
   productPrice: {
@@ -2078,10 +3008,17 @@ const styles = StyleSheet.create({
   kitchenOrderCard: {
     backgroundColor: '#F8FAFC',
     borderRadius: 14,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: '#E2E8F0',
     padding: 10,
     width: 200,
+    ...Platform.select({
+      web: {
+        cursor: 'pointer',
+        transition: 'all 0.18s cubic-bezier(0.4, 0, 0.2, 1)',
+        boxShadow: '0 2px 6px rgba(0, 0, 0, 0.03)',
+      } as any,
+    }),
   },
   kitchenCardTop: {
     flexDirection: 'row',
@@ -2430,8 +3367,8 @@ const styles = StyleSheet.create({
     borderRadius: 14,
   },
 
-  // MOBILE BOTTOM BAR
-  mobileBottomCartBar: {
+  // UNIFIED MOBILE BOTTOM BAR
+  mobileBottomBar: {
     position: 'absolute',
     bottom: 0,
     left: 0,
@@ -2441,9 +3378,9 @@ const styles = StyleSheet.create({
     borderTopColor: '#E2E8F0',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 18,
-    paddingVertical: 10,
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.08,
@@ -2451,14 +3388,300 @@ const styles = StyleSheet.create({
     elevation: 10,
     zIndex: 10,
   },
-  mobileCartCountText: {
+  mobileKitchenBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FFF7ED',
+    borderWidth: 1.5,
+    borderColor: '#FED7AA',
+    borderRadius: 14,
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    ...Platform.select({
+      web: { cursor: 'pointer', transition: 'all 0.15s ease' } as any,
+    }),
+  },
+  mobileKitchenIconBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#FFEDD5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mobileKitchenTitle: {
+    fontSize: 12.5,
+    fontWeight: '800',
+    color: '#C2410C',
+  },
+  mobileKitchenSub: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#EA580C',
+  },
+  mobileCartBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: 14,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    ...Platform.select({
+      web: { cursor: 'pointer', transition: 'all 0.15s ease' } as any,
+    }),
+  },
+  mobileCartBtnActive: {
+    backgroundColor: '#2563EB',
+    shadowColor: '#2563EB',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+  },
+  mobileCartBtnEmpty: {
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  mobileCartIconBox: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mobileCartIconBoxActive: {
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+  },
+  mobileCartBtnCount: {
+    fontSize: 10.5,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  mobileCartBtnPrice: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  mobileCartArrowPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    backgroundColor: '#E2E8F0',
+  },
+  mobileCartArrowPillActive: {
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+  },
+  mobileCartArrowText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+
+  // MOBILE BOTTOM SHEET OVERLAYS & CONTAINERS
+  mobileSheetOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.55)',
+    justifyContent: 'flex-end',
+    ...Platform.select({
+      web: { backdropFilter: 'blur(4px)' } as any,
+    }),
+  },
+  mobileSheetBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  mobileCartSheetContainer: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '92%',
+    height: '90%',
+    width: '100%',
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
+  },
+  sheetDragHandleRow: {
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  sheetDragHandle: {
+    width: 38,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#CBD5E1',
+  },
+  mobileSheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  mobileSheetTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  mobileSheetCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Platform.select({
+      web: { cursor: 'pointer' } as any,
+    }),
+  },
+  mobileCartScroll: {
+    flex: 1,
+  },
+  mobileCartScrollContent: {
+    padding: 16,
+    gap: 12,
+  },
+  mobileCustomerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  receiptIconBoxSmall: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#EFF6FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mobileCustomerName: {
+    fontSize: 13.5,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  mobileOrderSub: {
     fontSize: 11,
     color: '#64748B',
   },
-  mobileCartTotalText: {
+  mobileEditCustBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#EFF6FF',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+    ...Platform.select({
+      web: { cursor: 'pointer' } as any,
+    }),
+  },
+  mobileEditCustText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#2563EB',
+  },
+  mobileCartItemsList: {
+    gap: 8,
+    minHeight: 120,
+  },
+  mobileStickyBottomCta: {
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: Platform.OS === 'ios' ? 24 : 14,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+    backgroundColor: '#FFFFFF',
+  },
+
+  // MOBILE KITCHEN SHEET
+  mobileKitchenSheetContainer: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '85%',
+    height: '80%',
+    width: '100%',
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
+  },
+  mobileKitchenScroll: {
+    flex: 1,
+  },
+  mobileKitchenScrollContent: {
+    padding: 16,
+  },
+  mobileKitchenCard: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 14,
+    gap: 8,
+    ...Platform.select({
+      web: { cursor: 'pointer', transition: 'all 0.15s ease' } as any,
+    }),
+  },
+  mobileKitchenCardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  mobileKitchenCustName: {
     fontSize: 15,
     fontWeight: '800',
     color: '#0F172A',
+  },
+  mobileKitchenOrderNum: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748B',
+    marginTop: 2,
+  },
+  mobileKitchenCardDivider: {
+    height: 1,
+    backgroundColor: '#E2E8F0',
+  },
+  mobileKitchenItemsList: {
+    gap: 3,
+  },
+  mobileKitchenItemLine: {
+    fontSize: 12.5,
+    fontWeight: '600',
+    color: '#334155',
+  },
+  mobileKitchenCardFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 4,
+  },
+  mobileKitchenTimeText: {
+    fontSize: 11.5,
+    color: '#64748B',
+    fontWeight: '600',
+  },
+  mobileKitchenDetailHint: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#2563EB',
   },
 
   // 4. ACTIVITY VIEW LAYOUT
@@ -2768,8 +3991,13 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   addonGroupHeader: {
-    gap: 2,
+    gap: 4,
     paddingBottom: 2,
+  },
+  addonGroupTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   addonGroupMainTitle: {
     fontSize: 14,
@@ -3172,5 +4400,224 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 10,
     marginTop: 4,
+  },
+
+  // 12. TRACK ORDER DETAIL MODAL STYLES
+  trackOrderDetailWrapper: {
+    gap: 14,
+    paddingTop: 4,
+  },
+  todHeaderCard: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 14,
+    gap: 12,
+  },
+  todHeaderTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  todCustomerName: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  todOrderNum: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748B',
+    marginTop: 2,
+  },
+  todTimeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 9999,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  todTimeText: {
+    fontSize: 11.5,
+    color: '#64748B',
+    fontWeight: '600',
+  },
+  todMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  todMetaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  todMetaDivider: {
+    width: 1,
+    height: 16,
+    backgroundColor: '#E2E8F0',
+  },
+  todMetaText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#334155',
+  },
+  todItemsSection: {
+    gap: 8,
+  },
+  todSectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  todSectionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#334155',
+  },
+  todSectionCount: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  todItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  todItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+  },
+  todQtyBadge: {
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  todQtyText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#2563EB',
+  },
+  todItemName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  todItemUnitHint: {
+    fontSize: 11,
+    color: '#94A3B8',
+    marginTop: 1,
+  },
+  todItemPrice: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  todOrderSummaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+    marginTop: 2,
+  },
+  todSummaryLabel: {
+    fontSize: 12.5,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  todSummaryValue: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  todStatusSection: {
+    gap: 8,
+  },
+  // KDS Timeline styles
+  kdsStatusProgress: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F8FAFC',
+    padding: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  kdsStep: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  kdsStepDone: {
+    backgroundColor: '#F0FDF4',
+    borderColor: '#BBF7D0',
+  },
+  kdsStepCurrent: {
+    backgroundColor: '#EFF6FF',
+    borderColor: '#BFDBFE',
+  },
+  kdsStepText: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  kdsStepTextCurrent: {
+    color: '#1D4ED8',
+    fontWeight: '700',
+  },
+  todActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingTop: 4,
+  },
+  todCompletedBanner: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#ECFDF5',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  todCompletedText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#065F46',
   },
 });

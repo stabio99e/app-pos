@@ -58,7 +58,7 @@ export function Dialog({
                   style={styles.closeBtn}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
-                  <Ionicons name="close" size={18} color="#EF4444" />
+                  <Ionicons name="close" size={18} color="#64748B" />
                 </TouchableOpacity>
               ) : (
                 <View style={styles.headerSpacer} />
@@ -128,12 +128,13 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#FEF2F2',
+    backgroundColor: '#F1F5F9',
     alignItems: 'center',
     justifyContent: 'center',
     ...Platform.select({
       web: {
         cursor: 'pointer',
+        transition: 'background-color 0.15s ease',
       } as any,
     }),
   },

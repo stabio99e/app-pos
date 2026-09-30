@@ -85,12 +85,18 @@ export function Button({
       ) : (
         <>
           {prefix && <>{prefix}</>}
-          {typeof children === 'string' ? (
+          {React.isValidElement(children) && typeof children.type !== 'string' ? (
+            children
+          ) : (
             <Text
               style={[
                 styles.textBase,
                 styles[`text_${intent}`],
                 styles[`textSize_${size}`],
+                (intent === 'primary' || intent === 'danger' || intent === 'success' || intent === 'dark') && {
+                  color: '#FFFFFF',
+                  fontWeight: '700',
+                },
                 prefix ? { marginLeft: 8 } : null,
                 suffix ? { marginRight: 8 } : null,
                 textStyle,
@@ -98,8 +104,6 @@ export function Button({
             >
               {children}
             </Text>
-          ) : (
-            children
           )}
           {suffix && <>{suffix}</>}
         </>
@@ -212,6 +216,7 @@ const styles = StyleSheet.create({
   },
   text_primary: {
     color: '#FFFFFF',
+    fontWeight: '700',
   },
   text_secondary: {
     color: '#334155',

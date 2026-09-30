@@ -21,6 +21,8 @@ export interface Promo {
   maxDiscount?: number;
 }
 
+export type AddonType = 'grouped' | 'flat';
+
 export interface Product {
   id: string;
   name: string;
@@ -29,6 +31,7 @@ export interface Product {
   categoryBadgeColor: 'peach' | 'mint' | 'amber' | 'pink' | 'blue' | 'purple';
   image: string;
   description: string;
+  addonType?: AddonType;
   addonGroups?: AddonGroup[];
   availableAddons?: Addon[];
 }
@@ -49,8 +52,8 @@ export interface KitchenOrder {
   orderType: 'Dine In' | 'Take Away';
   time: string;
   status: 'On Kitchen Hand' | 'All Done' | 'To be Served';
-  statusColor: 'amber' | 'mint' | 'gray';
-  items: { name: string; qty: number }[];
+  statusColor: 'amber' | 'mint' | 'gray' | 'blue';
+  items: { name: string; qty: number; price?: number }[];
   totalItems: number;
 }
 
@@ -69,12 +72,12 @@ export const formatRupiah = (amount: number): string => {
 };
 
 export const CATEGORIES = [
-  { id: 'all', label: 'All Menu', count: 110 },
-  { id: 'Bread', label: 'Breads', count: 20 },
-  { id: 'Cake', label: 'Cakes', count: 20 },
-  { id: 'Donut', label: 'Donuts', count: 20 },
-  { id: 'Pastry', label: 'Pastries', count: 20 },
-  { id: 'Sandwich', label: 'Sandwich', count: 20 },
+  { id: 'all', label: 'All Menu', count: 14 },
+  { id: 'Bread', label: 'Breads', count: 4 },
+  { id: 'Cake', label: 'Cakes', count: 2 },
+  { id: 'Donut', label: 'Donuts', count: 2 },
+  { id: 'Pastry', label: 'Pastries', count: 4 },
+  { id: 'Sandwich', label: 'Sandwich', count: 2 },
 ] as const;
 
 export const SAVORY_ADDON_GROUPS: AddonGroup[] = [
@@ -104,22 +107,28 @@ export const SAVORY_ADDON_GROUPS: AddonGroup[] = [
   },
   {
     title: 'Plus Addons',
-    subtitle: 'Pilihan pelengkap saus celup & telur',
+    subtitle: 'Pilihan pelengkap saus & coba coba',
     addons: [
       {
         id: 's4',
+        name: '+ Coba Coba Dip Sauce',
+        price: 5000,
+        description: 'Saus racikan coba coba lezat bertekstur creamy gurih khas house-blend.',
+      },
+      {
+        id: 's5',
         name: '+ Truffle Mayo Dressing',
         price: 7000,
         description: 'Saus mayones creamy lembut dengan sentuhan aroma minyak truffle wangi.',
       },
       {
-        id: 's5',
+        id: 's6',
         name: '+ Sunny Side Up Egg',
         price: 7000,
         description: 'Telur mata sapi segar omega 3 dengan kuning telur lembut lumer.',
       },
       {
-        id: 's6',
+        id: 's7',
         name: '+ Garlic Herb Butter Dip',
         price: 6000,
         description: 'Saus mentega bawang putih dengan racikan rempah peterseli aromatik.',
@@ -155,27 +164,88 @@ export const SWEET_ADDON_GROUPS: AddonGroup[] = [
   },
   {
     title: 'Plus Addons',
-    subtitle: 'Pilihan pelengkap es krim & selai',
+    subtitle: 'Pilihan pelengkap gelato & coba coba',
     addons: [
       {
         id: 'w4',
+        name: '+ Coba Coba Sweet Glaze',
+        price: 5000,
+        description: 'Glaze karamel coba coba dengan aroma vanilla butter manis nikmat.',
+      },
+      {
+        id: 'w5',
         name: '+ Vanilla Gelato Scoop',
         price: 12000,
         description: 'Satu scoop es krim gelato vanila khas Italia yang dingin & creamy.',
       },
       {
-        id: 'w5',
+        id: 'w6',
         name: '+ Strawberry Jam Compote',
         price: 5000,
         description: 'Selai buah stroberi asli dengan bulir buah manis asam segar alami.',
       },
       {
-        id: 'w6',
+        id: 'w7',
         name: '+ Caramel Glaze Dip',
         price: 5000,
         description: 'Saus karamel mentega manis gurih dengan sentuhan sea salt.',
       },
     ],
+  },
+];
+
+// Flat (Biasa) Addon Lists for products that use simple ungrouped addons
+export const FLAT_SAVORY_ADDONS: Addon[] = [
+  {
+    id: 'fs1',
+    name: '+ Sambal Matah Bali',
+    price: 6000,
+    description: 'Sambal matah segar racikan bawang merah, cabai rawit & serai aromatik.',
+  },
+  {
+    id: 'fs2',
+    name: '+ Coba Coba Dip Sauce',
+    price: 5000,
+    description: 'Saus racikan coba coba lezat bertekstur creamy gurih khas house-blend.',
+  },
+  {
+    id: 'fs3',
+    name: '+ Salted Butter Block',
+    price: 5000,
+    description: 'Satu porsi mentega gurih Anchor pilihan untuk olesan roti.',
+  },
+  {
+    id: 'fs4',
+    name: '+ Extra Spicy Abon Sapi',
+    price: 8000,
+    description: 'Abon sapi pedas manis melimpah gurih nikmat.',
+  },
+];
+
+export const FLAT_SWEET_ADDONS: Addon[] = [
+  {
+    id: 'fw1',
+    name: '+ Coba Coba Glaze',
+    price: 5000,
+    description: 'Glaze racikan coba coba manis legit harum vanilla butter.',
+  },
+  {
+    id: 'fw2',
+    name: '+ Extra Cereal Crunch',
+    price: 4000,
+    description: 'Taburan cereal panggang renyah manis di atas sajian pastry & donat.',
+  },
+  {
+    id: 'fw3',
+    name: '+ Sweet Milk Glaze',
+    price: 4000,
+    description: 'Lapisan saus susu manis lumer yang lembut dan creamy.',
+  },
+  {
+    id: 'fw4',
+    name: '+ Choco Sprinkles',
+    price: 3000,
+    description: 'Butiran cokelat manis melimpah menambah tekstur renyah.',
   },
 ];
 
@@ -234,6 +304,7 @@ export const PRODUCTS: Product[] = [
     categoryBadgeColor: 'peach',
     image: 'https://images.unsplash.com/photo-1528735602780-2552fd46c7af?auto=format&fit=crop&w=600&q=80',
     description: 'Savory layered croissant sandwich filled with sliced roast beef, mild cheddar, arugula, and signature herb mustard sauce.',
+    addonType: 'grouped',
     addonGroups: SAVORY_ADDON_GROUPS,
     availableAddons: SAVORY_ADDONS,
   },
@@ -245,6 +316,7 @@ export const PRODUCTS: Product[] = [
     categoryBadgeColor: 'mint',
     image: 'https://images.unsplash.com/photo-1555507036-ab1f4038808a?auto=format&fit=crop&w=600&q=80',
     description: 'Premium butter croissant with a crispy pastry crust and soft inside will melt away on your mouth!',
+    addonType: 'grouped',
     addonGroups: SWEET_ADDON_GROUPS,
     availableAddons: SWEET_ADDONS,
   },
@@ -256,8 +328,8 @@ export const PRODUCTS: Product[] = [
     categoryBadgeColor: 'amber',
     image: 'https://images.unsplash.com/photo-1551024709-8f23befc6f87?auto=format&fit=crop&w=600&q=80',
     description: 'Golden ring donut filled with whipped sweet cereal cream, drizzled with vanilla glaze and toasted corn crunch.',
-    addonGroups: SWEET_ADDON_GROUPS,
-    availableAddons: SWEET_ADDONS,
+    addonType: 'flat',
+    availableAddons: FLAT_SWEET_ADDONS,
   },
   {
     id: '4',
@@ -267,6 +339,7 @@ export const PRODUCTS: Product[] = [
     categoryBadgeColor: 'pink',
     image: 'https://images.unsplash.com/photo-1533134242443-d4fd215305ad?auto=format&fit=crop&w=600&q=80',
     description: 'Classic creamy Basque burnt cheesecake with a rich melted cheese interior and buttery biscuit crumble foundation.',
+    addonType: 'grouped',
     addonGroups: SWEET_ADDON_GROUPS,
     availableAddons: SWEET_ADDONS,
   },
@@ -278,6 +351,7 @@ export const PRODUCTS: Product[] = [
     categoryBadgeColor: 'blue',
     image: 'https://images.unsplash.com/photo-1589367920969-ab8e050bbb04?auto=format&fit=crop&w=600&q=80',
     description: 'Artisanal 36-hour slow fermented sourdough bread stuffed with sharp cheddar pockets and finished with a crispy crackling crust.',
+    addonType: 'grouped',
     addonGroups: SAVORY_ADDON_GROUPS,
     availableAddons: SAVORY_ADDONS,
   },
@@ -289,8 +363,8 @@ export const PRODUCTS: Product[] = [
     categoryBadgeColor: 'purple',
     image: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=600&q=80',
     description: 'Portuguese pastel de nata style custard tart featuring buttery thousand-layer puff pastry and scorched caramelized custard.',
-    addonGroups: SWEET_ADDON_GROUPS,
-    availableAddons: SWEET_ADDONS,
+    addonType: 'flat',
+    availableAddons: FLAT_SWEET_ADDONS,
   },
   {
     id: '7',
@@ -300,8 +374,8 @@ export const PRODUCTS: Product[] = [
     categoryBadgeColor: 'blue',
     image: 'https://images.unsplash.com/photo-1549931319-a545dcf3bc73?auto=format&fit=crop&w=600&q=80',
     description: 'Wholesome artisan sliced loaf blended with 7 ancient whole grains, toasted flax, sunflower kernels, and dark rye flakes.',
-    addonGroups: SAVORY_ADDON_GROUPS,
-    availableAddons: SAVORY_ADDONS,
+    addonType: 'flat',
+    availableAddons: FLAT_SAVORY_ADDONS,
   },
   {
     id: '8',
@@ -311,8 +385,8 @@ export const PRODUCTS: Product[] = [
     categoryBadgeColor: 'mint',
     image: 'https://images.unsplash.com/photo-1587314168485-3236d6710814?auto=format&fit=crop&w=600&q=80',
     description: 'Crisp spiral pastry horn generously injected with smooth dark Belgian chocolate ganache and dusted with powdered sugar.',
-    addonGroups: SWEET_ADDON_GROUPS,
-    availableAddons: SWEET_ADDONS,
+    addonType: 'flat',
+    availableAddons: FLAT_SWEET_ADDONS,
   },
   {
     id: '9',
@@ -322,6 +396,7 @@ export const PRODUCTS: Product[] = [
     categoryBadgeColor: 'pink',
     image: 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&w=600&q=80',
     description: 'Layers of moist dark chocolate sponge soaked in wild cherry compote, enveloped in fresh chantilly cream and chocolate curls.',
+    addonType: 'grouped',
     addonGroups: SWEET_ADDON_GROUPS,
     availableAddons: SWEET_ADDONS,
   },
@@ -333,8 +408,8 @@ export const PRODUCTS: Product[] = [
     categoryBadgeColor: 'blue',
     image: 'https://images.unsplash.com/photo-1608198093002-ad4e005484ec?auto=format&fit=crop&w=600&q=80',
     description: 'Fluffy Asian milk bun brushed with sweet condensed mayo cream and densely coated with savory chicken floss and nori.',
-    addonGroups: SAVORY_ADDON_GROUPS,
-    availableAddons: SAVORY_ADDONS,
+    addonType: 'flat',
+    availableAddons: FLAT_SAVORY_ADDONS,
   },
   {
     id: '11',
@@ -344,8 +419,8 @@ export const PRODUCTS: Product[] = [
     categoryBadgeColor: 'blue',
     image: 'https://images.unsplash.com/photo-1586444248902-2f64eddc13df?auto=format&fit=crop&w=600&q=80',
     description: 'Korean specialty chewy loaf filled with sweet roasted yam puree and mild cream cheese swirl.',
-    addonGroups: SWEET_ADDON_GROUPS,
-    availableAddons: SWEET_ADDONS,
+    addonType: 'flat',
+    availableAddons: FLAT_SWEET_ADDONS,
   },
   {
     id: '12',
@@ -355,8 +430,32 @@ export const PRODUCTS: Product[] = [
     categoryBadgeColor: 'mint',
     image: 'https://images.unsplash.com/photo-1530610476181-d83430b64dcd?auto=format&fit=crop&w=600&q=80',
     description: 'Twice-baked butter croissant soaked in vanilla syrup, stuffed with rich almond frangipane and covered with toasted sliced almonds.',
+    addonType: 'grouped',
     addonGroups: SWEET_ADDON_GROUPS,
     availableAddons: SWEET_ADDONS,
+  },
+  {
+    id: '13',
+    name: 'Eclair Au Chocolat',
+    price: 28000,
+    category: 'Pastry',
+    categoryBadgeColor: 'mint',
+    image: 'https://images.unsplash.com/photo-1558326567-98ae2405596b?auto=format&fit=crop&w=600&q=80',
+    description: 'Crisp Parisian choux pastry filled with luscious vanilla bean diplomat cream and coated in dark chocolate ganache.',
+    addonType: 'flat',
+    availableAddons: FLAT_SWEET_ADDONS,
+  },
+  {
+    id: '14',
+    name: 'Classic Butter Toast',
+    price: 25000,
+    category: 'Bread',
+    categoryBadgeColor: 'blue',
+    image: 'https://images.unsplash.com/photo-1525351484163-7529414344d8?auto=format&fit=crop&w=600&q=80',
+    description: 'Thick-sliced Japanese shokupan toasted golden brown with rich salted New Zealand butter and aromatic wildflower honey.',
+    addonType: 'grouped',
+    addonGroups: SAVORY_ADDON_GROUPS,
+    availableAddons: SAVORY_ADDONS,
   },
 ];
 
@@ -374,10 +473,10 @@ export const INITIAL_KITCHEN_ORDERS: KitchenOrder[] = [
     status: 'On Kitchen Hand',
     statusColor: 'amber',
     items: [
-      { name: 'Beef Crowich', qty: 1 },
-      { name: 'Grains Pan Bread', qty: 1 },
-      { name: 'Cheezy Sourdough', qty: 1 },
-      { name: 'Sliced Black Forest', qty: 1 },
+      { name: 'Beef Crowich', qty: 1, price: 45000 },
+      { name: 'Grains Pan Bread', qty: 1, price: 30000 },
+      { name: 'Cheezy Sourdough', qty: 1, price: 35000 },
+      { name: 'Sliced Black Forest', qty: 1, price: 40000 },
     ],
     totalItems: 4,
   },
@@ -391,10 +490,10 @@ export const INITIAL_KITCHEN_ORDERS: KitchenOrder[] = [
     status: 'All Done',
     statusColor: 'mint',
     items: [
-      { name: 'Beef Crowich', qty: 1 },
-      { name: 'Cereal Cream Donut', qty: 1 },
-      { name: 'Cheezy Sourdough', qty: 1 },
-      { name: 'Egg Tart', qty: 3 },
+      { name: 'Beef Crowich', qty: 1, price: 45000 },
+      { name: 'Cereal Cream Donut', qty: 1, price: 22000 },
+      { name: 'Cheezy Sourdough', qty: 1, price: 35000 },
+      { name: 'Egg Tart', qty: 3, price: 18000 },
     ],
     totalItems: 6,
   },
@@ -406,12 +505,12 @@ export const INITIAL_KITCHEN_ORDERS: KitchenOrder[] = [
     orderType: 'Dine In',
     time: '08:15 AM',
     status: 'To be Served',
-    statusColor: 'gray',
+    statusColor: 'blue',
     items: [
-      { name: 'Beef Crowich', qty: 1 },
-      { name: 'Cereal Cream Donut', qty: 1 },
-      { name: 'Cheezy Sourdough', qty: 1 },
-      { name: 'Spinchoco Roll', qty: 3 },
+      { name: 'Beef Crowich', qty: 1, price: 45000 },
+      { name: 'Cereal Cream Donut', qty: 1, price: 22000 },
+      { name: 'Cheezy Sourdough', qty: 1, price: 35000 },
+      { name: 'Spinchoco Roll', qty: 3, price: 30000 },
     ],
     totalItems: 6,
   },
@@ -425,10 +524,10 @@ export const INITIAL_KITCHEN_ORDERS: KitchenOrder[] = [
     status: 'On Kitchen Hand',
     statusColor: 'amber',
     items: [
-      { name: 'Beef Crowich', qty: 1 },
-      { name: 'Cereal Cream Donut', qty: 1 },
-      { name: 'Cheezy Sourdough', qty: 1 },
-      { name: 'Buttermelt Croissant', qty: 3 },
+      { name: 'Beef Crowich', qty: 1, price: 45000 },
+      { name: 'Cereal Cream Donut', qty: 1, price: 22000 },
+      { name: 'Cheezy Sourdough', qty: 1, price: 35000 },
+      { name: 'Buttermelt Croissant', qty: 3, price: 25000 },
     ],
     totalItems: 6,
   },
